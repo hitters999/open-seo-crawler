@@ -749,9 +749,12 @@ def restart_self():
         if os.path.exists(helper):
             # restart-helper.ps1 kills us, waits for the port to free, then
             # starts + VERIFIES the app, retrying instead of bricking.
+            # -Python is the interpreter running us now, used when the
+            # checkout has no venv (a system-Python install).
             cmd = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                    '-WindowStyle', 'Hidden', '-File', helper,
-                   '-OldPid', str(own_pid), '-Port', '5002']
+                   '-OldPid', str(own_pid), '-Port', '5002',
+                   '-Python', _sys.executable]
         else:
             # Fallback (pre-helper checkout): inline PowerShell, still no `start`.
             ps = (
@@ -763,11 +766,23 @@ def restart_self():
             ).format(pid=own_pid, pyw=pyw, app=app_py, repo=repo)
             cmd = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                    '-WindowStyle', 'Hidden', '-Command', ps]
-        try:
-            _sp.Popen(cmd, creationflags=CREATE_NO_WINDOW,
-                      stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)[:300]}), 500
+        # When the app runs as a Task Scheduler task (or under any service
+        # wrapper) it sits in a job object, and killing us ends the job and
+        # every process in it, the helper included, so nothing comes back.
+        # CREATE_BREAKAWAY_FROM_JOB lifts the helper out of the job; a job
+        # that forbids breakaway refuses it, so fall back to a plain spawn.
+        CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+        spawned = False
+        for flags in (CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW):
+            try:
+                _sp.Popen(cmd, creationflags=flags,
+                          stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                spawned = True
+                break
+            except OSError as e:
+                last_err = e
+        if not spawned:
+            return jsonify({'ok': False, 'error': str(last_err)[:300]}), 500
         return jsonify({'ok': True, 'message': 'Restarting in ~3s'})
 
     # POSIX
