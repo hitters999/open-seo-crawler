@@ -547,9 +547,18 @@ def placeholder_issues(result):
 
 
 def outlink_issues(soup, page_url, domain):
-    """Links to a host only the developer can reach, or to a staging copy."""
+    """Links to a host only the developer can reach, or to a staging copy.
+
+    A page linking to its OWN host is skipped, because that is an internal
+    link, not a developer address that escaped. Without that, every page of a
+    site served from localhost would report every link on it.
+    """
     bad = []
     seen = set()
+    try:
+        here = urlparse(page_url).netloc.lower().split(':')[0]
+    except ValueError:
+        here = ''
     for a in soup.find_all('a', href=True):
         href = (a.get('href') or '').strip()
         if not href or href.startswith('#'):
@@ -563,6 +572,8 @@ def outlink_issues(soup, page_url, domain):
         if not host:
             continue
         bare = host.split(':')[0]
+        if bare == here:
+            continue  # a page linking to its own host is just an internal link
         local = (
             bare in _LOCAL_HOSTS
             or bare.endswith(_LOCAL_SUFFIXES)
@@ -593,8 +604,18 @@ def form_issues(soup, result, page_url):
     for form in soup.find_all('form'):
         action = (form.get('action') or '').strip()
         target = urljoin(page_url, action) if action else page_url
-        if target.lower().startswith('http://'):
-            insecure += 1
+        if not target.lower().startswith('http://'):
+            continue
+        # Nothing crosses a network, and Chrome treats localhost as a secure
+        # context, so it shows no warning there and does not block autofill.
+        try:
+            thost = urlparse(target).netloc.lower().split(':')[0]
+        except ValueError:
+            thost = ''
+        if (thost in _LOCAL_HOSTS or thost.endswith(_LOCAL_SUFFIXES)
+                or _PRIVATE_IP_RE.match(thost or '')):
+            continue
+        insecure += 1
     if insecure:
         return [f'{insecure} form(s) submit over HTTP (browsers warn the visitor)']
     return []
@@ -640,28 +661,19 @@ def pagination_anchor_issues(soup, page_url):
 
 
 def url_shape_issues(page_url):
-    """Path shapes that make duplicate or infinite URL space."""
+    """Path shapes that make duplicate or infinite URL space.
+
+    A repeated path segment is deliberately NOT checked here. The crawler
+    already refuses to fetch such a URL, because a repeated slug is the
+    signature of the relative-href trap, so a check for it can never see one
+    and fired on zero pages across every saved crawl. Reporting on it would
+    claim coverage that does not exist.
+    """
     out = []
     try:
         parsed = urlparse(page_url)
     except ValueError:
         return out
-    segs = [s for s in (parsed.path or '').split('/') if s]
-    # Numeric segments are skipped: a date archive is /2026/07/07/, and the
-    # repeated 07 there is a month and a day, not a repeated path.
-    low = [s.lower() for s in segs if not s.isdigit()]
-    repeated = ''
-    for i in range(1, len(low)):
-        if low[i] == low[i - 1]:
-            repeated = low[i]
-            break
-    if not repeated:
-        for s in set(low):
-            if low.count(s) >= 3:
-                repeated = s
-                break
-    if repeated:
-        out.append(f'repetitive path ("{repeated}" repeats)')
     query_keys = set()
     if parsed.query:
         for part in parsed.query.split('&'):

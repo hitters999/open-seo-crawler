@@ -4242,6 +4242,7 @@ def crawl_site():
         # one-way hreflang pair, a dead end with no internal outlinks, or a
         # page whose only inbound links come from non-indexable pages. Pure and
         # offline, so it is tuned against saved crawls in test_page_checks.py.
+        _crawl_extra = {}
         try:
             _crawl_extra = page_checks.crawl_issues(results, inlinks_map, domain)
             if _crawl_extra:
@@ -4307,7 +4308,11 @@ def crawl_site():
                                "to other domains). Adjust the filters or enable 'Ignore robots.txt' and retry.")
 
         app.logger.info(f"[crawler] Crawl complete: {len(results)} pages, {errors} errors, {avg_time}s avg, {len(dup_titles)} dup titles, {len(orphans)} orphans" + (f" | stop_reason: {stop_reason}" if stop_reason else ""))
-        yield f"data: {json.dumps({'type': 'complete', 'total': len(results), 'summary': summary, 'inlinks': inlinks_payload, 'reports': reports, 'stop_reason': stop_reason})}\n\n"
+        # late_issues: crawl-level findings, which only exist once every row
+        # is in hand. The rows themselves were streamed long before this, so
+        # without sending them here the browser never sees them and neither
+        # does the crawl it saves.
+        yield f"data: {json.dumps({'type': 'complete', 'total': len(results), 'summary': summary, 'inlinks': inlinks_payload, 'reports': reports, 'late_issues': _crawl_extra, 'stop_reason': stop_reason})}\n\n"
         yield "data: [DONE]\n\n"
         ACTIVE_CRAWL_RULES.pop(crawl_id, None)
         ACTIVE_CRAWL_LIMITS.pop(crawl_id, None)

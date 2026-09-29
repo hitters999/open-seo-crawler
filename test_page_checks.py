@@ -334,10 +334,10 @@ check('no rel next quiet',
       pc.pagination_anchor_issues(soup_of('<html></html>'), 'https://example.com/') == [])
 
 # --- url shape ---------------------------------------------------------------
-check('repeated segment caught',
-      has(pc.url_shape_issues('https://example.com/blog/blog/post'), 'repetitive path'))
-check('date archive is not repetition',
-      not has(pc.url_shape_issues('https://example.com/2026/07/07/'), 'repetitive path'))
+# A repeated path segment is not reported here on purpose: the crawler refuses
+# to fetch such a URL, so this check could never see one.
+check('repeated segments are left to the crawler filter',
+      pc.url_shape_issues('https://example.com/blog/blog/post') == [])
 check('search path caught',
       has(pc.url_shape_issues('https://example.com/search/widgets'), 'internal search'))
 check('search param caught',

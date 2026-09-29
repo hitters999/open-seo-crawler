@@ -910,6 +910,29 @@ function startCrawl(opts) {
               if (p.reports && typeof p.reports === 'object') {
                 window.crawlerReports = p.reports;
               }
+              // Crawl-level findings (canonical targets, one-way hreflang,
+              // dead ends, pages carried only by noindex links). They can only
+              // be worked out once every row is in, which is long after each
+              // row was streamed, so they arrive here and are merged onto the
+              // rows we already hold. Without this they never reach the UI and
+              // never reach the crawl we save.
+              if (p.late_issues && typeof p.late_issues === 'object') {{
+                const _lnorm = (u) => (u || '').replace(/\/$/, '');
+                const _lrows = new Map();
+                for (const r of (crawlerResults || [])) {{
+                  _lrows.set(_lnorm(r.url), r);
+                  if (r.original_url) _lrows.set(_lnorm(r.original_url), r);
+                }}
+                for (const _u of Object.keys(p.late_issues)) {{
+                  const _row = _lrows.get(_lnorm(_u));
+                  if (!_row) continue;
+                  _row.issues = _row.issues || [];
+                  for (const _i of p.late_issues[_u]) {{
+                    if (!_row.issues.includes(_i)) _row.issues.push(_i);
+                  }}
+                }}
+                if (typeof updateCounts === 'function') updateCounts();
+              }}
               // Crawl ended with nothing useful — surface a clear reason +
               // Retry instead of silently landing on an empty summary.
               if (p.stop_reason) {

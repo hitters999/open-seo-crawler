@@ -36,7 +36,7 @@ const CASES = [
    "warn", "pagination not linked"],
   ["2 hreflang alternate(s) do not link back (https://example.com/fr/)", "warn", "hreflang no return"],
   ["4 image(s) with no width or height (causes layout shift)", "info", "image dimensions"],
-  ["URL: repetitive path (\"blog\" repeats)", "warn", "URL:"],
+  ["URL: uppercase", "warn", "URL:"],
   ["URL: internal search result page", "warn", "URL:"],
 ];
 
