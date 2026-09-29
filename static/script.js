@@ -73,6 +73,58 @@ const ISSUE_META = {
   'Missing Open Graph': { sev: 'warn', why: 'Without og:title/og:description/og:image, Facebook/LinkedIn/Slack previews scrape random page elements. Shares look ugly, CTR drops.', sources: [['Ahrefs — Open Graph Tags', 'https://ahrefs.com/blog/open-graph-meta-tags/']] },
   'Missing og:image': { sev: 'warn', why: 'Without an og:image, shared links render as text-only cards — significantly lower engagement. Recommended size: 1200×630.', sources: [['Ahrefs — Open Graph Tags', 'https://ahrefs.com/blog/open-graph-meta-tags/']] },
   'Missing Twitter Card': { sev: 'info', why: 'Without twitter:card metadata, X falls back to Open Graph or plain text. Summary Large Image card gives the best preview.', sources: [['Ahrefs — Open Graph Tags', 'https://ahrefs.com/blog/open-graph-meta-tags/']] },
+  // --- page_checks.py findings. Keyed by the slug normalize() returns,
+  // which is what renderIssueInfo() looks up, not the card label.
+  'Title outside head': { sev: 'error', why: 'A browser closes <head> at the first tag that does not belong there, such as an <img> or a <div>, and moves everything after it into <body>. The markup still reads as though the tag sat in the head, so this is invisible in the source, but Google takes the title, canonical or robots tag as body content and ignores it. Move the offending element below the closing head tag.', sources: [['Google - Title links', 'https://developers.google.com/search/docs/appearance/title-link']] },
+  'Canonical outside head': { sev: 'error', why: 'Google only reads rel=canonical inside <head>. An element that does not belong in the head closes it early, dropping this tag into the body where it counts for nothing, so the page canonicalises to itself by default. Move the element that closes the head, not the canonical.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Meta robots outside head': { sev: 'error', why: 'A robots meta tag outside <head> is ignored, so a page meant to be hidden stays indexable, or a directive you rely on silently stops applying. Move whatever closes the head early.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'Meta description outside head': { sev: 'warn', why: 'A meta description outside <head> is ignored, so Google writes its own snippet from body copy instead.', sources: [['Google - Snippets', 'https://developers.google.com/search/docs/appearance/snippet']] },
+  'Hreflang outside head': { sev: 'warn', why: 'hreflang link elements only count inside <head>. Outside it the whole cluster goes unread and the wrong country version can start ranking.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'Multiple title tags': { sev: 'warn', why: 'Google uses the first title in the document and ignores the rest, which is rarely the one a plugin appended later. Two titles usually means the theme and an SEO plugin are both writing one.', sources: [['Google - Title links', 'https://developers.google.com/search/docs/appearance/title-link']] },
+  'Multiple conflicting canonicals': { sev: 'error', why: 'The page names two different canonical URLs. Google treats the conflict as unreliable and falls back to picking its own, so neither of your choices applies. Remove all but one.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Multiple canonical tags': { sev: 'warn', why: 'The same canonical is declared more than once. Harmless for ranking, but it means two systems are writing the tag and the next edit may set them to different values.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Multiple meta descriptions': { sev: 'warn', why: 'Google picks one of them, usually the first, so the description you wrote may not be the one that shows. Normally the theme and an SEO plugin each writing one.', sources: [['Google - Snippets', 'https://developers.google.com/search/docs/appearance/snippet']] },
+  'Multiple viewport tags': { sev: 'warn', why: 'Two viewport declarations give unpredictable mobile rendering, because which one wins depends on the browser. Keep one.', sources: [['web.dev - Viewport', 'https://web.dev/articles/responsive-web-design-basics']] },
+  'Canonical conflict: HTML and HTTP header disagree': { sev: 'error', why: 'The page declares one canonical in the HTML and a different one in the HTTP Link header. Google picks one and it may not be yours. Serve a single canonical from one place.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical only in the HTTP header': { sev: 'warn', why: 'The canonical is delivered by a header, so nobody editing the page or reading its source will see it. Valid, but the next template change will not account for it.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical points to HTTP from an HTTPS page': { sev: 'warn', why: 'An HTTPS page naming an HTTP canonical asks Google to index the insecure URL, which then redirects. Point it at the https version.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical is a relative URL': { sev: 'warn', why: 'Google resolves a relative canonical against the page, so it usually works, but any change to the base URL or a proxy path silently repoints it. Use the absolute URL.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical points to another host': { sev: 'warn', why: 'The canonical hands ranking to a different host. Deliberate for syndicated content and after a migration, a mistake when a staging or CDN hostname was left in the template.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical is malformed': { sev: 'error', why: 'The canonical URL carries an unresolved template variable, so it points at a URL that does not exist, for example a host with "undefined" stuck on the end. Google is being told the real page lives somewhere unreachable, which can drop this one from the index. Fix the template that builds the tag.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Noindex plus a canonical to another URL': { sev: 'warn', why: 'These two signals contradict each other: the canonical says consolidate onto another URL, while noindex says drop this one. Google may apply the noindex to the canonical target as well. Use one or the other.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical URL is missing from the hreflang set': { sev: 'warn', why: 'The page\'s own canonical URL does not appear anywhere in its hreflang set, so the cluster and the canonical disagree about which URL represents this page. Google usually discards the hreflang in that case.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'noindex in the X-Robots-Tag header': { sev: 'error', why: 'The page is excluded from the index by an HTTP header, not by anything in the HTML, which is why this one gets missed: the source looks fine. Check the server, CDN or security plugin that adds it.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'Conflicting robots directives': { sev: 'error', why: 'The page asks to be indexed and not indexed at once. Google resolves a conflict in favour of the more restrictive rule, so noindex wins and the page disappears. Decide which one was meant.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'Robots "none"': { sev: 'error', why: 'none is shorthand for noindex plus nofollow, so the page is excluded from search and its links pass nothing. Almost always copied in by mistake.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'nosnippet': { sev: 'warn', why: 'Google shows the result with no description text at all, which cuts click-through hard. Only worth keeping on pages you do not want quoted.', sources: [['Google - Snippets', 'https://developers.google.com/search/docs/appearance/snippet']] },
+  'noarchive': { sev: 'info', why: 'Stops Google offering a cached copy. No ranking effect, and Google retired the cache link in 2024, so this rarely matters now.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'unavailable_after date has passed': { sev: 'error', why: 'The page carries a date that has already gone by, so Google drops it from results. Usually left over from a campaign or an event page. Remove the directive if the page should stay.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
+  'soft 404': { sev: 'error', why: 'The URL answers 200 OK while the page itself says the content is gone, which is what an empty category or a mistyped path usually produces. Google treats these as soft 404s and drops them, and every mistyped URL becomes another indexable duplicate. Return a real 404 or 410, or redirect to the page that replaced it.', sources: [['Google - HTTP status codes', 'https://developers.google.com/search/docs/crawling-indexing/http-network-errors']] },
+  'Title may truncate in results': { sev: 'warn', why: 'Google cuts desktop titles near 580 pixels, not at a character count, so a title of wide characters clips while a short count looks fine. The figure is an estimate from an Arial width table: treat it as a nudge to put the distinguishing words first, not as an error.', sources: [['Google - Title links', 'https://developers.google.com/search/docs/appearance/title-link']] },
+  'Meta description may truncate in results': { sev: 'warn', why: 'Descriptions are cut near 920 pixels on desktop and shorter on mobile. The tail is what disappears, so lead with the outcome and keep the qualifier that earns the click early.', sources: [['Google - Snippets', 'https://developers.google.com/search/docs/appearance/snippet']] },
+  'No self-referencing hreflang entry': { sev: 'warn', why: 'Every page in an hreflang set has to list itself. Without it the set is incomplete and Google may discard the whole cluster, which is when the wrong country version starts ranking.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'Invalid hreflang code': { sev: 'warn', why: 'hreflang takes an ISO 639-1 language, optionally with an ISO 3166-1 alpha-2 region ("en", "en-AU"). Anything else is ignored silently, so the targeting never applies. "en-UK" is the classic one: the country code for the United Kingdom is GB.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'Duplicate hreflang code with different URLs': { sev: 'warn', why: 'The same language code points at two different URLs, so Google cannot tell which one serves that language and may ignore the pair.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'lang vs hreflang': { sev: 'warn', why: 'The lang attribute on <html> and the page\'s own hreflang entry name different languages. One of the two is wrong, and the mismatch undermines both.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'No lang attribute on <html>': { sev: 'warn', why: 'Without a lang attribute, screen readers guess the pronunciation and browsers offer the wrong translation. Google reads the page language from the content, so this is an accessibility and translation problem more than a ranking one.', sources: [['MDN - The lang attribute', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/lang']] },
+  'Invalid lang attribute': { sev: 'warn', why: 'The value is not a language tag, so it is ignored: "english" instead of "en" is the usual one. Use the two-letter code, with a region only when the content really differs by country.', sources: [['MDN - The lang attribute', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/lang']] },
+  'H1 too long': { sev: 'warn', why: 'Past about 70 characters an H1 stops working as a heading and reads as a sentence, which makes the page harder to scan. Usually the first line of body copy marked up as a heading by mistake.', sources: [['Moz - Header tags', 'https://moz.com/learn/seo/on-page-factors']] },
+  'first heading': { sev: 'info', why: 'The first heading a reader and a crawler meet sets the topic. Starting at H2 is not a ranking penalty, but it usually means the H1 is styled out of the way or wrapped around a logo.', sources: [['Moz - Header tags', 'https://moz.com/learn/seo/on-page-factors']] },
+  'Heading level skips': { sev: 'info', why: 'Jumping from H1 to H3 breaks the outline a screen reader announces, and makes the section structure harder for Google to follow. Usually a heading chosen for its font size.', sources: [['MDN - Heading elements', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/Heading_Elements']] },
+  'internal http links': { sev: 'warn', why: 'An HTTPS page linking to http:// versions of its own site forces an extra redirect on every click and wastes crawl budget. Update the links to https.', sources: [['Google - Site moves with URL changes', 'https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes']] },
+  'internal nofollow': { sev: 'info', why: 'rel=nofollow on an internal link stops PageRank flowing to a page you own. Sometimes deliberate on login or cart URLs, usually left over from an old faceted-navigation fix.', sources: [['Google - Qualify outbound links', 'https://developers.google.com/search/docs/crawling-indexing/qualify-outbound-links']] },
+  'dead anchors': { sev: 'warn', why: 'A link to #section whose id does not exist on the page does nothing when clicked. Usually the id was renamed or the section removed, leaving the navigation broken for readers.', sources: [['MDN - The anchor element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/a']] },
+  'long alt': { sev: 'info', why: 'Alt text this long reads as a paragraph to a screen reader and most of them truncate it. Describe the image in a sentence and move the rest into the caption or body copy.', sources: [['Google - Images', 'https://developers.google.com/search/docs/appearance/google-images']] },
+  'No compression': { sev: 'warn', why: 'The server sent the HTML uncompressed. gzip or brotli typically cuts an HTML document by 70 percent or more, so this is one server setting that speeds up every page and every crawl.', sources: [['web.dev - Text compression', 'https://web.dev/articles/optimize-lcp']] },
+  'No cache-control header': { sev: 'info', why: 'With no caching policy, browsers and intermediaries guess how long the response stays fresh, so repeat visits refetch the page. Set an explicit policy even if it is no-cache.', sources: [['MDN - Cache-Control', 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control']] },
+  'No doctype': { sev: 'warn', why: 'Without a doctype the browser falls back to quirks mode, where box sizing and layout follow rules from the 1990s. Mobile layout and Core Web Vitals both suffer. Add <!doctype html> as the first line.', sources: [['MDN - Quirks mode', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Quirks_mode_and_standards_mode']] },
+  'Multiple head elements': { sev: 'warn', why: 'A second <head> is invalid, and the browser folds its contents into the body, where any directive in it stops counting. Usually a template included a header partial twice.', sources: [['MDN - The head element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/head']] },
+  'Multiple body elements': { sev: 'warn', why: 'Two <body> elements is invalid markup. Browsers merge them, but the parse result is unpredictable and anything relying on document structure can break.', sources: [['MDN - The body element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/body']] },
+  'No charset declared': { sev: 'warn', why: 'With no declared encoding the browser guesses, and a wrong guess turns apostrophes and accented characters into mojibake. Declare UTF-8 in the first 1024 bytes.', sources: [['MDN - The meta element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta']] },
+  'charset': { sev: 'warn', why: 'A legacy encoding garbles any character outside its range, which shows up as mojibake in titles and snippets. Declare UTF-8 and serve it.', sources: [['MDN - The meta element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta']] },
+  'Large DOM': { sev: 'info', why: 'Past roughly 1,500 elements, style and layout recalculation starts to dominate interaction cost, which shows up in INP. Usually a builder page with deeply nested wrappers, or a list that renders every row.', sources: [['web.dev - DOM size', 'https://web.dev/articles/dom-size-and-interactivity']] },
+  'Paginated page set to noindex': { sev: 'warn', why: 'Google follows links on a noindex page for a while, then stops trusting it. Items reachable only through page 2 and beyond stop being discovered. Leave paginated pages indexable with a self-referencing canonical.', sources: [['Google - Pagination', 'https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading']] },
+  'Paginated page canonicalised to another URL': { sev: 'warn', why: 'Pointing page 2 at page 1 tells Google the two pages are the same, so it stops processing page 2 and the products or posts listed only there go undiscovered. Each paginated page should canonicalise to itself.', sources: [['Google - Pagination', 'https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading']] },
   // Bulk Reports — informational panels (no severity). renderIssueInfo()
   // surfaces the why text + sources above the panel so users get context
   // without having to remember what each report is for.
@@ -91,12 +143,27 @@ const ISSUE_META = {
   '__traps':          { sev: 'error', why: 'The server returns 200 OK for URLs that cannot exist. A soft 404 at the root makes every mistyped URL an indexable duplicate. A 200 on a nested path under a real page is worse: the served page\'s relative links resolve one level deeper, creating an INFINITE URL space — search engines waste crawl budget on phantom pages and scrapers can crawl forever, burning unlimited bandwidth on transfer-capped hosting. Fix: return 404 (or 301 to the real page) for any path that doesn\'t map to real content.', sources: [['Google — Soft 404 errors', 'https://developers.google.com/search/docs/crawling-indexing/http-network-errors#soft-404-errors'], ['Google — Infinite spaces', 'https://developers.google.com/search/blog/2008/08/to-infinity-and-beyond-no']] },
 };
 
+// Severity for the page_checks.py findings. Kept as two shared regexes
+// because three functions below classify issues independently (sevOf, plus
+// the inline sev() in matchesCategory and updateCounts) and they have to
+// agree, or a page lands in the Errors panel while the Errors badge counts
+// it as Info. Tested against the lower-cased issue string.
+// Error tier: a directive a browser moves out of head is ignored by Google,
+// and a malformed canonical hands the page to a URL that does not exist.
+// Both silently undo whatever the tag meant to say.
+const _PAGE_CHECK_ERR_RE = /^(title|canonical|meta robots) outside head|^unavailable_after|^canonical is malformed|^multiple conflicting canonicals|^canonical conflict|^soft 404|^noindex in the x-robots-tag|^conflicting robots directives|^robots "none"/;
+// Warning tier: real faults, but they cost visibility rather than removing
+// the page from the index.
+const _PAGE_CHECK_WARN_RE = /^multiple (title tags|canonical tags|meta descriptions|viewport tags|head elements|body elements)|^canonical (points to http|is a relative url|points to another host|only in the http header)|^noindex plus a canonical|^meta description outside head|^no compression|^paginated page|hreflang|^no lang attribute|^invalid lang attribute|^html lang|^h1 too long|may truncate in results|point to http|on-page anchor\(s\) point to nothing|^no doctype|^no charset declared|^charset is |^nosnippet/;
+
 function sevOf(issue) {
   const l = (issue || '').toLowerCase();
   // noindex / canonicalised are intentional states — surfaced in their
   // own dedicated tabs, not lumped into Errors.
   if (/^missing (title|h1|canonical|meta description)|^http [45]|served over http|^mixed content/.test(l)) return 'error';
+  if (_PAGE_CHECK_ERR_RE.test(l)) return 'error';
   if (/too (long|short)|imgs missing alt|imgs with empty alt|thin content|multiple h1|h1 same as title|missing viewport|no schema|missing open graph|missing og:image|^slow |^url:|trailing slash|^redirect \(|www normalization|http→https/.test(l)) return 'warn';
+  if (_PAGE_CHECK_WARN_RE.test(l)) return 'warn';
   return 'info';
 }
 
@@ -1082,7 +1149,9 @@ function matchesCategory(page, cat) {
   const sev = (i) => {
     const l = i.toLowerCase();
     if (/^missing (title|h1|canonical|meta description)|^http [45]|served over http|^mixed content|^ai crawlers blocked|^search engines blocked/.test(l)) return 'error';
+    if (_PAGE_CHECK_ERR_RE.test(l)) return 'error';
     if (/too (long|short)|imgs missing alt|imgs with empty alt|images missing alt|thin content|multiple h1|h1 same as title|h1 identical|missing viewport|no schema|missing open graph|missing og:image|^slow |^url:|trailing slash|^redirect \(|www normalization|http→https/.test(l)) return 'warn';
+    if (_PAGE_CHECK_WARN_RE.test(l)) return 'warn';
     return 'info';
   };
   // Severity filters are inclusive: a page with any issue at that severity
@@ -1104,6 +1173,14 @@ function matchesCategory(page, cat) {
   if (cat === 'imgs missing alt') {
     return joined.includes('imgs missing alt') || joined.includes('imgs with empty alt');
   }
+  // page_checks.py slugs that are shorter than the issue text they stand
+  // for, so the substring fallback below would never match them and the
+  // drill-in would open an empty table.
+  if (cat === 'long alt')            return joined.includes('with alt text over 150 chars');
+  if (cat === 'internal http links') return /\d+ internal link\(s\) point to http/.test(joined);
+  if (cat === 'internal nofollow')   return /\d+ internal link\(s\) are nofollow/.test(joined);
+  if (cat === 'dead anchors')        return joined.includes('on-page anchor(s) point to nothing');
+  if (cat === 'lang vs hreflang')    return joined.includes('does not match its own hreflang entry');
   return joined.includes(cat.toLowerCase());
 }
 
@@ -1133,6 +1210,57 @@ window.selectCategory = function(cat) {
     'Missing Open Graph': 'Pages Missing Open Graph Tags', 'Missing og:image': 'Pages Missing og:image',
     'Missing Twitter Card': 'Pages Missing Twitter Card', 'Missing viewport': 'Pages Missing Viewport Meta',
     'Mixed content': 'HTTPS Pages Loading HTTP Resources', 'URL:': 'URL Hygiene Issues',
+    // page_checks.py findings
+    'Title outside head': 'Title Outside <head> (moved into the body, so Google ignores it)',
+    'Canonical outside head': 'Canonical Outside <head> (ignored, page self-canonicalises)',
+    'Meta robots outside head': 'Meta Robots Outside <head> (directive ignored)',
+    'Meta description outside head': 'Meta Description Outside <head> (ignored)',
+    'Hreflang outside head': 'Hreflang Outside <head> (cluster unread)',
+    'Multiple title tags': 'Pages With More Than One Title Tag',
+    'Multiple conflicting canonicals': 'Pages With Conflicting Canonical Tags',
+    'Multiple canonical tags': 'Pages With a Repeated Canonical Tag',
+    'Multiple meta descriptions': 'Pages With More Than One Meta Description',
+    'Multiple viewport tags': 'Pages With More Than One Viewport Tag',
+    'Canonical conflict: HTML and HTTP header disagree': 'Canonical Conflict Between HTML and HTTP Header',
+    'Canonical only in the HTTP header': 'Canonical Delivered Only by HTTP Header',
+    'Canonical points to HTTP from an HTTPS page': 'Canonical Pointing to HTTP From an HTTPS Page',
+    'Canonical is a relative URL': 'Pages With a Relative Canonical URL',
+    'Canonical points to another host': 'Canonical Pointing to Another Host',
+    'Canonical is malformed': 'Malformed Canonical (unresolved template variable)',
+    'Noindex plus a canonical to another URL': 'Noindex Combined With a Canonical Elsewhere',
+    'Canonical URL is missing from the hreflang set': 'Canonical Missing From the Hreflang Set',
+    'noindex in the X-Robots-Tag header': 'Noindex Set by the X-Robots-Tag Header',
+    'Conflicting robots directives': 'Conflicting Robots Directives (index and noindex)',
+    'Robots "none"': 'Pages With robots "none" (noindex plus nofollow)',
+    'nosnippet': 'Pages With nosnippet (no description in results)',
+    'noarchive': 'Pages With noarchive',
+    'unavailable_after date has passed': 'Pages Whose unavailable_after Date Has Passed',
+    'soft 404': 'Soft 404s (200 status on a page that says it is missing)',
+    'Title may truncate in results': 'Titles Wide Enough to Truncate (pixel width, not characters)',
+    'Meta description may truncate in results': 'Meta Descriptions Wide Enough to Truncate',
+    'No self-referencing hreflang entry': 'Hreflang Sets Missing a Self-Reference',
+    'Invalid hreflang code': 'Invalid Hreflang Language or Region Codes',
+    'Duplicate hreflang code with different URLs': 'Duplicate Hreflang Codes Pointing at Different URLs',
+    'lang vs hreflang': 'HTML lang Disagreeing With the Hreflang Entry for This Page',
+    'No lang attribute on <html>': 'Pages With No lang Attribute',
+    'Invalid lang attribute': 'Pages With an Invalid lang Attribute',
+    'H1 too long': 'Pages With an H1 Over 70 Characters',
+    'first heading': 'Pages Whose First Heading Is Not an H1',
+    'Heading level skips': 'Pages That Skip a Heading Level',
+    'internal http links': 'Pages Linking to HTTP Versions of Their Own Site',
+    'internal nofollow': 'Pages With Nofollowed Internal Links',
+    'dead anchors': 'Pages With On-Page Anchors Pointing at Nothing',
+    'long alt': 'Images With Alt Text Over 150 Characters',
+    'No compression': 'Pages Served Without gzip or brotli',
+    'No cache-control header': 'Pages With No Cache-Control Header',
+    'No doctype': 'Pages With No Doctype (quirks mode)',
+    'Multiple head elements': 'Pages With More Than One <head>',
+    'Multiple body elements': 'Pages With More Than One <body>',
+    'No charset declared': 'Pages With No Declared Character Encoding',
+    'charset': 'Pages Declaring an Encoding Other Than UTF-8',
+    'Large DOM': 'Pages Over 1,500 DOM Elements',
+    'Paginated page set to noindex': 'Paginated Pages Set to Noindex',
+    'Paginated page canonicalised to another URL': 'Paginated Pages Canonicalised Away',
     '__sm_missing': 'Missing from Sitemap', '__sm_orphan': 'Orphan in Sitemap',
     '__sm_only': 'Orphan Pages — No Internal Links', '__sm_noindex': 'Non-Indexable in Sitemap',
     '__sm_non200': 'Non-200 in Sitemap', '__sm_redirects': 'Redirects in Sitemap',
@@ -2544,6 +2672,16 @@ function _scRenderSummaryPanel() {
     if (map[stripped]) return map[stripped];
     if (/^imgs missing alt|imgs with empty alt/i.test(stripped) ||
         /^\d+ imgs missing alt|^\d+ imgs with empty alt/i.test(issue)) return ['Images missing alt','imgs missing alt'];
+    // page_checks.py issues that carry a count or a value, so the raw string
+    // differs per page and would otherwise draw one card each.
+    if (/^\d+ image\(s\) with alt text/i.test(issue))            return ['Images with alt text over 150 chars','long alt'];
+    if (/^\d+ internal link\(s\) point to HTTP/i.test(issue))     return ['Internal links pointing to HTTP','internal http links'];
+    if (/^\d+ internal link\(s\) are nofollow/i.test(issue))      return ['Internal nofollow links','internal nofollow'];
+    if (/^\d+ on-page anchor\(s\) point to nothing/i.test(issue)) return ['On-page anchors pointing to nothing','dead anchors'];
+    if (/^Soft 404/i.test(stripped))                              return ['Soft 404 (200 status on a missing page)','soft 404'];
+    if (/^HTML lang .* does not match/i.test(stripped))            return ['HTML lang does not match its hreflang entry','lang vs hreflang'];
+    if (/^Charset is /i.test(stripped))                           return ['Charset is not UTF-8','charset'];
+    if (/^First heading is H/i.test(stripped))                    return ['First heading is not H1','first heading'];
     if (/^HTTP \d{3}/i.test(stripped)) return ['HTTP errors (4xx / 5xx)','HTTP'];
     if (/^URL:/i.test(stripped))       return ['URL hygiene','URL:'];
     if (/^AI crawlers blocked/i.test(stripped))      return ['AI crawlers blocked in robots.txt','AI crawlers blocked'];
@@ -2685,6 +2823,17 @@ function _scRenderSeverityPanel(cat) {
         /^\d+ imgs missing alt|^\d+ imgs with empty alt/i.test(issue)) {
       return ['Images missing alt', 'imgs missing alt'];
     }
+    // page_checks.py issues that carry a count or a value, so the raw string
+    // differs per page and would otherwise draw one card each. Matched on the
+    // raw issue: `stripped` has already lost everything from the first '('.
+    if (/^\d+ image\(s\) with alt text/i.test(issue))            return ['Images with alt text over 150 chars', 'long alt'];
+    if (/^\d+ internal link\(s\) point to HTTP/i.test(issue))     return ['Internal links pointing to HTTP',      'internal http links'];
+    if (/^\d+ internal link\(s\) are nofollow/i.test(issue))      return ['Internal nofollow links',              'internal nofollow'];
+    if (/^\d+ on-page anchor\(s\) point to nothing/i.test(issue)) return ['On-page anchors pointing to nothing',   'dead anchors'];
+    if (/^Soft 404/i.test(stripped))                              return ['Soft 404 (200 status on a missing page)', 'soft 404'];
+    if (/^HTML lang .* does not match/i.test(stripped))            return ['HTML lang does not match its hreflang entry', 'lang vs hreflang'];
+    if (/^Charset is /i.test(stripped))                           return ['Charset is not UTF-8',                   'charset'];
+    if (/^First heading is H/i.test(stripped))                    return ['First heading is not H1',                'first heading'];
     if (/^HTTP \d{3}/i.test(stripped)) return ['HTTP errors (4xx / 5xx)', 'HTTP'];
     if (/^URL:/i.test(stripped))       return ['URL hygiene', 'URL:'];
     if (/^AI crawlers blocked/i.test(stripped))      return ['AI crawlers blocked in robots.txt', 'AI crawlers blocked'];
@@ -3281,7 +3430,9 @@ function updateCounts() {
     // noindex / canonicalised are intentional states, not errors —
     // surfaced in their own tabs instead of polluting the Errors badge.
     if (/^missing (title|h1|canonical|meta description)|^http [45]|served over http|^mixed content|^ai crawlers blocked|^search engines blocked/.test(l)) return 'error';
+    if (_PAGE_CHECK_ERR_RE.test(l)) return 'error';
     if (/too (long|short)|imgs missing alt|imgs with empty alt|images missing alt|thin content|multiple h1|h1 same as title|h1 identical|missing viewport|no schema|missing open graph|missing og:image|^slow |^url:|trailing slash|^redirect \(|www normalization|http→https/.test(l)) return 'warn';
+    if (_PAGE_CHECK_WARN_RE.test(l)) return 'warn';
     return 'info';
   };
   // Initialise category counts

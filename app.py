@@ -27,6 +27,7 @@ import threading
 from collections import deque, defaultdict as _dd
 from urllib.parse import urlparse, urljoin, urlunparse, parse_qs, urlencode
 from bs4 import BeautifulSoup
+import page_checks   # extra per-page crawler checks (pure, offline-testable)
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
@@ -2696,6 +2697,27 @@ def _crawl_page(url, session, domain, pw_renderer=None, ignore_noindex=False, ca
                     result['issues'].append(f'Analytics unknown — {platform} site needs Render JS')
                 else:
                     result['issues'].append('No analytics detected')
+
+        # --- Extra checks (page_checks.py) ---
+        # Head-position directives, duplicate tags, canonical conflicts, robots
+        # directives past plain noindex, soft 404s, hreflang faults, SERP pixel
+        # width, internal link and markup faults. Pure and offline, so they're
+        # covered by test_page_checks.py against fixture strings rather than a
+        # live crawl. The gate below is the same one the content checks above
+        # used, so copy-level findings stay off pages whose copy belongs to
+        # another URL.
+        _content_ok = bool(
+            (result['indexable'] or ignore_noindex)
+            and not result.get('is_pagination')
+            and not result.get('redirect_url')
+            and not is_canonicalised
+            and 200 <= _status < 300)
+        try:
+            result['issues'].extend(page_checks.extra_issues(
+                raw_html, soup, hdrs, result, result.get('url') or url, domain,
+                content_checks=_content_ok))
+        except Exception as e:
+            result.setdefault('render_errors', []).append(f'page_checks: {str(e)[:120]}')
 
         # --- Issues that apply regardless of indexability ---
         # Canonicalised flag — surfaced even when content checks are skipped
