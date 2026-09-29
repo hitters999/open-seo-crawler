@@ -751,11 +751,15 @@ def crawl_issues(results, inlinks=None, domain=None):
     rows = [r for r in rows if on_site(r.get('url'))]
     if not rows:
         return out
-    by_url = {}
+    # Two maps, kept apart on purpose. The crawler follows redirects, so one row
+    # can answer to two addresses: the URL that redirected (original_url) and
+    # the destination it landed on (url). Which of the two a canonical names is
+    # the whole difference between a fault and a correctly written tag.
+    by_url, by_redirecting = {}, {}
     for r in rows:
         by_url.setdefault(_norm_url(r.get('url')), r)
-        if r.get('original_url'):
-            by_url.setdefault(_norm_url(r['original_url']), r)
+        if r.get('original_url') and _norm_url(r['original_url']) != _norm_url(r.get('url')):
+            by_redirecting.setdefault(_norm_url(r['original_url']), r)
 
     def add(url, issue):
         out.setdefault(url, [])
@@ -772,15 +776,20 @@ def crawl_issues(results, inlinks=None, domain=None):
         # be dropped in its favour.
         canonical = (r.get('canonical') or '').strip()
         if canonical and _norm_url(canonical) != _norm_url(url):
-            target = by_url.get(_norm_url(canonical))
+            key = _norm_url(canonical)
+            target = by_url.get(key)
             if target is not None:
+                # The canonical names the destination, so the hop is not its
+                # problem. Only its status and its indexability are.
                 status = target.get('status_code')
                 if status and not (200 <= status < 300):
                     add(url, f'Canonical points to a non-200 URL (HTTP {status})')
-                elif target.get('redirect_url'):
-                    add(url, 'Canonical points to a URL that redirects')
                 elif target.get('indexable') is False:
                     add(url, 'Canonical points to a non-indexable URL')
+            elif key in by_redirecting:
+                hop = by_redirecting[key]
+                dest = hop.get('url') or ''
+                add(url, f'Canonical points to a URL that redirects (to {dest})')
 
         # Hreflang only works when the alternate names this page back. A
         # one-way annotation is ignored, so the cluster does nothing.

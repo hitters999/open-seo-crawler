@@ -375,10 +375,21 @@ rows = [row('https://example.com/a', canonical='https://example.com/b'),
         row('https://example.com/b', status_code=404)]
 check('canonical to a 404 target',
       has(pc.crawl_issues(rows).get('https://example.com/a', []), 'non-200'))
-rows = [row('https://example.com/a', canonical='https://example.com/b'),
-        row('https://example.com/b', redirect_url='https://example.com/c')]
-check('canonical to a redirect',
+# The crawler follows redirects, so the row for a redirecting URL carries the
+# DESTINATION as `url` and the redirecting address as `original_url`. Only a
+# canonical naming the address that redirects is a fault: one naming the
+# destination is a correctly written tag, which is what trailing-slash
+# normalisation produces on every WordPress site.
+rows = [row('https://example.com/a', canonical='https://example.com/b-old'),
+        row('https://example.com/b', original_url='https://example.com/b-old',
+            redirect_url='https://example.com/b')]
+check('canonical naming the URL that redirects',
       has(pc.crawl_issues(rows).get('https://example.com/a', []), 'redirects'))
+rows = [row('https://example.com/a', canonical='https://example.com/b'),
+        row('https://example.com/b', original_url='https://example.com/b-old',
+            redirect_url='https://example.com/b')]
+check('canonical naming the destination is not a fault',
+      not has(pc.crawl_issues(rows).get('https://example.com/a', []), 'redirects'))
 rows = [row('https://example.com/a', canonical='https://example.com/b'),
         row('https://example.com/b')]
 check('healthy canonical quiet',
