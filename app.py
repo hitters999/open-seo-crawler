@@ -4271,7 +4271,8 @@ _CRAWL_FOLDER = os.path.expanduser('~/.site-crawler-crawls')
 # to _CRAWL_FOLDER so we don't fight over ownership; this is a read-only
 # union.
 _CRAWL_FOLDERS_RO = [os.path.expanduser(p) for p in
-                     os.environ.get('SITE_CRAWLER_EXTRA_CRAWL_DIRS', '').split(':')
+                     # os.pathsep: ':' on POSIX, ';' on Windows (C:\ has a colon)
+                     os.environ.get('SITE_CRAWLER_EXTRA_CRAWL_DIRS', '').split(os.pathsep)
                      if p.strip()]
 
 # Permanent, append-only title history. Lives inside the crawl folder as a
