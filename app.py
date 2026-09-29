@@ -1985,6 +1985,12 @@ def _crawl_page(url, session, domain, pw_renderer=None, ignore_noindex=False, ca
             _url_issues.append('contains parameters')
             if any(p in _parsed_url.query for p in ('utm_', 'gclid=', 'fbclid=')):
                 _url_issues.append('tracking parameters')
+        # Path shapes that make duplicate or infinite URL space: a segment
+        # repeating, and internal search result pages.
+        try:
+            _url_issues.extend(page_checks.url_shape_issues(url))
+        except Exception:
+            pass
         result['url_issues'] = _url_issues
 
         # --- Pagination detection ---
@@ -4230,6 +4236,28 @@ def crawl_site():
 
         # Soft-404 / infinite-URL-trap probe (2 requests, reuses crawl session)
         url_traps = _probe_url_traps(f"{parsed.scheme}://{parsed.netloc}", results, session)
+
+        # Crawl-level checks: faults that only show with every row in hand,
+        # such as a canonical pointing at a page that cannot be indexed, a
+        # one-way hreflang pair, a dead end with no internal outlinks, or a
+        # page whose only inbound links come from non-indexable pages. Pure and
+        # offline, so it is tuned against saved crawls in test_page_checks.py.
+        try:
+            _crawl_extra = page_checks.crawl_issues(results, inlinks_map, domain)
+            if _crawl_extra:
+                _by_url = {}
+                for _row in results:
+                    _by_url.setdefault(_row.get('url'), _row)
+                for _u, _extra in _crawl_extra.items():
+                    _row = _by_url.get(_u)
+                    if _row is None:
+                        continue
+                    _issues = _row.setdefault('issues', [])
+                    for _i in _extra:
+                        if _i not in _issues:
+                            _issues.append(_i)
+        except Exception:
+            pass
 
         reports = {
             'url_traps': url_traps,

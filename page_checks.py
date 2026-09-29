@@ -17,6 +17,7 @@ ignored by Google, which is the whole point of the check, so the raw byte
 positions are what matters.
 """
 
+import collections
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urljoin
@@ -60,6 +61,10 @@ DESC_PX_LIMIT = 920
 # "may truncate".
 TITLE_PX_REPORT = 620
 DESC_PX_REPORT = 990
+
+# Google stops reading an HTML document at 2MB, so anything past that point is
+# invisible however good it is.
+HTML_MAX_BYTES = 2_000_000
 
 # Junk a template writes into a URL when a variable never resolved. Seen live on
 # 412 pages of one site as "https://www.example.comundefined".
@@ -218,6 +223,9 @@ def canonical_issues(result, headers, soup):
             out.append('Canonical points to HTTP from an HTTPS page')
         if not re.match(r'^https?://', canonical.strip(), re.I):
             out.append('Canonical is a relative URL')
+        if '#' in canonical:
+            out.append('Canonical contains a fragment (Google drops everything '
+                       'after the #)')
         if kind == 'canonicalised' and not result.get('indexable', True):
             out.append('Noindex plus a canonical to another URL (conflicting signals)')
         try:
@@ -439,6 +447,14 @@ def markup_issues(raw_html, soup):
     head = raw_html[:2000] if raw_html else ''
     if raw_html and not re.search(r'<!doctype\s+html', head, re.I):
         out.append('No doctype (renders in quirks mode)')
+    if raw_html:
+        if not re.search(r'<head[\s>]', raw_html, re.I):
+            out.append('No <head> element (head tags land in the body)')
+        if not re.search(r'<body[\s>]', raw_html, re.I):
+            out.append('No <body> element')
+        if len(raw_html) > HTML_MAX_BYTES:
+            mb = len(raw_html) / 1_000_000
+            out.append(f'HTML document over 2MB ({mb:.1f}MB)')
     if len(soup.find_all('head')) > 1:
         out.append('Multiple head elements')
     if len(soup.find_all('body')) > 1:
@@ -497,6 +513,343 @@ def pagination_issues(result):
     return out
 
 
+# Placeholder copy that shipped by accident. "lorem ipsum" is the only phrase
+# specific enough to be safe on its own: later lines of the passage turn up in
+# typography articles and in real Latin quotations.
+_LOREM_RE = re.compile(r'\blorem\s+ipsum\b', re.I)
+
+# Hosts that only resolve on the machine that served the page, so a link to one
+# in production is a developer link that escaped.
+_LOCAL_HOSTS = {'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'}
+_LOCAL_SUFFIXES = ('.localhost', '.local', '.test', '.internal', '.localdomain')
+_PRIVATE_IP_RE = re.compile(
+    r'^(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+    r'|192\.168\.\d{1,3}\.\d{1,3}'
+    r'|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$'
+)
+# Staging labels are only matched on the crawled domain itself. As bare hosts
+# they are real websites: dev.to and test.com both exist.
+_STAGING_LABELS = ('staging', 'stage', 'dev', 'test', 'uat', 'preprod', 'preview')
+
+# A search results page has no business in an index: infinite, thin, and every
+# query makes another URL.
+_SEARCH_PATH_RE = re.compile(r'/(?:search|search-results|suche|recherche)(?:/|$)', re.I)
+_SEARCH_PARAM_KEYS = {'s', 'q', 'query', 'search', 'keyword', 'keywords',
+                      'search_query', 'searchterm', 'search_term'}
+
+
+def placeholder_issues(result):
+    """Template filler that reached production."""
+    text = result.get('body_text') or ''
+    if text and _LOREM_RE.search(text):
+        return ['Lorem ipsum placeholder text in the page copy']
+    return []
+
+
+def outlink_issues(soup, page_url, domain):
+    """Links to a host only the developer can reach, or to a staging copy."""
+    bad = []
+    seen = set()
+    for a in soup.find_all('a', href=True):
+        href = (a.get('href') or '').strip()
+        if not href or href.startswith('#'):
+            continue
+        if re.match(r'^(mailto|tel|javascript|sms|data|file):', href, re.I):
+            continue
+        try:
+            host = urlparse(urljoin(page_url, href)).netloc.lower()
+        except ValueError:
+            continue
+        if not host:
+            continue
+        bare = host.split(':')[0]
+        local = (
+            bare in _LOCAL_HOSTS
+            or bare.endswith(_LOCAL_SUFFIXES)
+            or bool(_PRIVATE_IP_RE.match(bare))
+        )
+        if not local and domain:
+            label, _, rest = bare.partition('.')
+            if rest.replace('www.', '') == domain and label in _STAGING_LABELS:
+                local = True
+        if local and bare not in seen:
+            seen.add(bare)
+            bad.append(bare)
+    if bad:
+        shown = ', '.join(sorted(bad)[:3])
+        return [f'{len(bad)} link(s) to a local or staging host ({shown})']
+    return []
+
+
+def form_issues(soup, result, page_url):
+    """A form whose data leaves over HTTP. Chrome warns before the visitor submits.
+
+    The action is resolved against the page, so a relative action on an HTTP
+    page counts: that is the common case and it submits in the clear. A form on
+    an HTTP page with an explicit HTTPS action is not flagged, because the data
+    itself is protected.
+    """
+    insecure = 0
+    for form in soup.find_all('form'):
+        action = (form.get('action') or '').strip()
+        target = urljoin(page_url, action) if action else page_url
+        if target.lower().startswith('http://'):
+            insecure += 1
+    if insecure:
+        return [f'{insecure} form(s) submit over HTTP (browsers warn the visitor)']
+    return []
+
+
+def image_dimension_issues(soup):
+    """Images with no width and height reserve no space, so the layout shifts."""
+    missing = 0
+    for img in soup.find_all('img'):
+        if img.get('width') and img.get('height'):
+            continue
+        style = (img.get('style') or '').lower()
+        if 'width' in style and 'height' in style:
+            continue
+        if (img.get('src') or '').lower().endswith('.svg'):
+            continue
+        missing += 1
+    if missing:
+        return [f'{missing} image(s) with no width or height (causes layout shift)']
+    return []
+
+
+def pagination_anchor_issues(soup, page_url):
+    """rel=next or rel=prev with no matching <a href>, so nothing can follow it."""
+    targets = []
+    for link in soup.find_all('link', attrs={'rel': True}):
+        rel = link.get('rel')
+        rel_str = ' '.join(rel).lower() if isinstance(rel, list) else str(rel).lower()
+        if rel_str in ('next', 'prev', 'previous') and link.get('href'):
+            targets.append(urljoin(page_url, link['href'].strip()))
+    if not targets:
+        return []
+    anchors = set()
+    for a in soup.find_all('a', href=True):
+        href = (a.get('href') or '').strip()
+        if href and not href.startswith('#'):
+            anchors.add(urljoin(page_url, href).rstrip('/'))
+    orphaned = [t for t in targets if t.rstrip('/') not in anchors]
+    if orphaned:
+        return [f'{len(orphaned)} pagination URL(s) declared by rel but not linked '
+                f'in an anchor tag (crawlers cannot follow them)']
+    return []
+
+
+def url_shape_issues(page_url):
+    """Path shapes that make duplicate or infinite URL space."""
+    out = []
+    try:
+        parsed = urlparse(page_url)
+    except ValueError:
+        return out
+    segs = [s for s in (parsed.path or '').split('/') if s]
+    # Numeric segments are skipped: a date archive is /2026/07/07/, and the
+    # repeated 07 there is a month and a day, not a repeated path.
+    low = [s.lower() for s in segs if not s.isdigit()]
+    repeated = ''
+    for i in range(1, len(low)):
+        if low[i] == low[i - 1]:
+            repeated = low[i]
+            break
+    if not repeated:
+        for s in set(low):
+            if low.count(s) >= 3:
+                repeated = s
+                break
+    if repeated:
+        out.append(f'repetitive path ("{repeated}" repeats)')
+    query_keys = set()
+    if parsed.query:
+        for part in parsed.query.split('&'):
+            key = part.split('=', 1)[0].strip().lower()
+            if key:
+                query_keys.add(key)
+    if _SEARCH_PATH_RE.search(parsed.path or '') or (query_keys & _SEARCH_PARAM_KEYS):
+        out.append('internal search result page')
+    return out
+
+
+def _norm_url(value):
+    """Scheme-insensitive, www-insensitive, trailing-slash-insensitive key."""
+    if not value:
+        return ''
+    try:
+        p = urlparse(value.strip())
+    except ValueError:
+        return value.strip().lower()
+    host = (p.netloc or '').lower()
+    if host.startswith('www.'):
+        host = host[4:]
+    path = (p.path or '/').rstrip('/') or '/'
+    return host + path
+
+
+def _is_indexable_row(row):
+    """Whether the content this row carries can be indexed.
+
+    ``redirect_url`` is deliberately NOT disqualifying: the crawler follows
+    redirects, so such a row holds the destination's 200 response and its
+    links. Treating it as non-indexable made every page linked only from a
+    redirecting homepage look starved of equity.
+    """
+    status = row.get('status_code')
+    if status and not (200 <= status < 300):
+        return False
+    if row.get('indexable') is False:
+        return False
+    return True
+
+
+def _primary_host(rows):
+    """The host the crawl is actually about, so foreign rows can be skipped."""
+    counts = collections.Counter()
+    for r in rows:
+        try:
+            host = urlparse(r.get('url') or '').netloc.lower()
+        except ValueError:
+            continue
+        if host.startswith('www.'):
+            host = host[4:]
+        if host:
+            counts[host] += 1
+    return counts.most_common(1)[0][0] if counts else ''
+
+
+def crawl_issues(results, inlinks=None, domain=None):
+    """Faults that only show once the whole crawl is in hand.
+
+    Returns ``{url: [issue, ...]}`` for the rows that gained an issue, so the
+    caller can extend ``result['issues']`` without this module knowing how the
+    crawl is stored. Pure and offline: it reads the same rows a saved crawl
+    holds, which is how it is tested.
+
+    Rows for other hosts (a redirect that left the site, an external page the
+    crawler happened to record) are skipped: they have no internal links by
+    definition, so judging them would report the other site.
+    """
+    out = {}
+    rows = [r for r in (results or []) if isinstance(r, dict) and r.get('url')]
+    if not rows:
+        return out
+    host = (domain or _primary_host(rows) or '').lower()
+    if host.startswith('www.'):
+        host = host[4:]
+
+    def on_site(value):
+        if not host:
+            return True
+        try:
+            h = urlparse(value or '').netloc.lower()
+        except ValueError:
+            return False
+        return h[4:] == host if h.startswith('www.') else h == host
+
+    rows = [r for r in rows if on_site(r.get('url'))]
+    if not rows:
+        return out
+    by_url = {}
+    for r in rows:
+        by_url.setdefault(_norm_url(r.get('url')), r)
+        if r.get('original_url'):
+            by_url.setdefault(_norm_url(r['original_url']), r)
+
+    def add(url, issue):
+        out.setdefault(url, [])
+        if issue not in out[url]:
+            out[url].append(issue)
+
+    for r in rows:
+        url = r['url']
+        if not _is_indexable_row(r):
+            continue
+
+        # A canonical pointing at a page Google cannot index throws the
+        # signal away: the target will not be indexed and this URL asked to
+        # be dropped in its favour.
+        canonical = (r.get('canonical') or '').strip()
+        if canonical and _norm_url(canonical) != _norm_url(url):
+            target = by_url.get(_norm_url(canonical))
+            if target is not None:
+                status = target.get('status_code')
+                if status and not (200 <= status < 300):
+                    add(url, f'Canonical points to a non-200 URL (HTTP {status})')
+                elif target.get('redirect_url'):
+                    add(url, 'Canonical points to a URL that redirects')
+                elif target.get('indexable') is False:
+                    add(url, 'Canonical points to a non-indexable URL')
+
+        # Hreflang only works when the alternate names this page back. A
+        # one-way annotation is ignored, so the cluster does nothing.
+        # A page that canonicalises elsewhere is a duplicate URL carrying the
+        # canonical's annotations, so its hreflang set belongs to that URL and
+        # judging the return links here reports the duplicate, not the fault.
+        entries = r.get('hreflang') or []
+        if entries and r.get('canonical_kind') != 'canonicalised':
+            missing_back = []
+            checked = set()
+            for entry in entries:
+                href = (entry or {}).get('href') if isinstance(entry, dict) else None
+                lang = (entry or {}).get('lang') if isinstance(entry, dict) else None
+                if not href or (lang or '').lower() == 'x-default':
+                    continue
+                key = _norm_url(href)
+                if key == _norm_url(url) or key in checked:
+                    continue
+                checked.add(key)
+                target = by_url.get(key)
+                if target is None:
+                    continue
+                back = {_norm_url((e or {}).get('href'))
+                        for e in (target.get('hreflang') or [])
+                        if isinstance(e, dict)}
+                if _norm_url(url) not in back:
+                    missing_back.append(href)
+            if missing_back:
+                shown = ', '.join(missing_back[:2])
+                add(url, f'{len(missing_back)} hreflang alternate(s) do not link back '
+                         f'({shown})')
+
+        # A page with no internal outlinks is where crawl paths and link
+        # equity stop dead.
+        # A row with an error, or a URL the crawler could not parse as http,
+        # has no link list because it was never really read.
+        if (not r.get('internal_link_urls')
+                and not r.get('is_pagination')
+                and not r.get('error')
+                and url.lower().startswith(('http://', 'https://'))):
+            add(url, 'No internal outlinks (dead end for crawling and link equity)')
+
+    # Every inbound link coming from a page Google will not index means this
+    # page inherits nothing, however many links point at it.
+    if inlinks:
+        for target_url, refs in inlinks.items():
+            row = by_url.get(_norm_url(target_url))
+            if row is None or not _is_indexable_row(row):
+                continue
+            sources = []
+            for ref in (refs or []):
+                src = ref.get('source') if isinstance(ref, dict) else ref
+                if not src:
+                    continue
+                if _norm_url(src) == _norm_url(target_url):
+                    continue
+                sources.append(src)
+            if not sources:
+                continue
+            resolved = [by_url.get(_norm_url(s)) for s in sources]
+            known = [s for s in resolved if s is not None]
+            if not known or len(known) != len(resolved):
+                continue
+            if all(not _is_indexable_row(s) for s in known):
+                add(row['url'], 'Inbound internal links come only from non-indexable '
+                                'pages (no link equity reaches it)')
+    return out
+
+
 def extra_issues(raw_html, soup, headers, result, page_url, domain,
                  content_checks=True):
     """Every check in this module, in one list, for ``result['issues']``.
@@ -522,12 +875,17 @@ def extra_issues(raw_html, soup, headers, result, page_url, domain,
         lambda: markup_issues(raw_html, soup),
         lambda: dom_issues(soup),
         lambda: pagination_issues(result),
+        lambda: pagination_anchor_issues(soup, page_url),
+        lambda: form_issues(soup, result, page_url),
+        lambda: outlink_issues(soup, page_url, domain),
     )
     content = (
         lambda: pixel_issues(result),
         lambda: heading_issues(result, soup),
         lambda: link_issues(soup, result, page_url, domain),
         lambda: image_issues(result),
+        lambda: image_dimension_issues(soup),
+        lambda: placeholder_issues(result),
     )
     for fn in technical + (content if content_checks else ()):
         try:

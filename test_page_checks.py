@@ -271,6 +271,172 @@ check('paginated noindex', has(pg, 'Paginated page set to noindex'))
 check('paginated canonicalised', has(pg, 'canonicalised to another URL'))
 check('non-paginated quiet', pc.pagination_issues(result(indexable=False)) == [])
 
+# --- placeholder copy --------------------------------------------------------
+check('lorem ipsum caught',
+      has(pc.placeholder_issues(result(body_text='Intro. Lorem ipsum dolor sit amet.')),
+          'Lorem ipsum placeholder'))
+check('real copy quiet', pc.placeholder_issues(result(body_text='Real copy here.')) == [])
+check('no body text quiet', pc.placeholder_issues(result()) == [])
+
+# --- local and staging outlinks ----------------------------------------------
+LOCAL_LINKS = (
+    '<html><body>'
+    '<a href="http://localhost:3000/admin">admin</a>'
+    '<a href="https://10.0.0.5/panel">panel</a>'
+    '<a href="https://staging.example.com/thing">staging</a>'
+    '<a href="https://example.com/real">real</a>'
+    '<a href="https://dev.to/article">an actual website</a>'
+    '</body></html>')
+ol = pc.outlink_issues(soup_of(LOCAL_LINKS), 'https://example.com/page', 'example.com')
+check('localhost outlink caught', has(ol, 'localhost'))
+check('private ip outlink caught', has(ol, '10.0.0.5'))
+check('same-domain staging caught', has(ol, 'staging.example.com'))
+check('dev.to is not treated as staging', not has(ol, 'dev.to'))
+check('clean page quiet',
+      pc.outlink_issues(soup_of('<a href="/x">x</a>'), 'https://example.com/p',
+                        'example.com') == [])
+
+# --- insecure forms ----------------------------------------------------------
+check('http form action caught',
+      has(pc.form_issues(soup_of('<form action="http://example.com/post"></form>'),
+                         result(), 'https://example.com/page'), 'submit over HTTP'))
+check('https form quiet',
+      pc.form_issues(soup_of('<form action="/post"></form>'), result(),
+                     'https://example.com/page') == [])
+check('relative form on an http page caught',
+      has(pc.form_issues(soup_of('<form action="/post"></form>'),
+                         result(security={'is_https': False}), 'http://example.com/p'),
+          'submit over HTTP'))
+check('https action on an http page is fine',
+      pc.form_issues(soup_of('<form action="https://example.com/post"></form>'),
+                     result(security={'is_https': False}), 'http://example.com/p') == [])
+
+# --- image dimensions --------------------------------------------------------
+check('missing dimensions caught',
+      has(pc.image_dimension_issues(soup_of('<img src="a.jpg">')), 'no width or height'))
+check('sized image quiet',
+      pc.image_dimension_issues(soup_of('<img src="a.jpg" width="4" height="3">')) == [])
+check('inline sized image quiet',
+      pc.image_dimension_issues(
+          soup_of('<img src="a.jpg" style="width:4px;height:3px">')) == [])
+check('svg skipped', pc.image_dimension_issues(soup_of('<img src="a.svg">')) == [])
+
+# --- pagination reachability -------------------------------------------------
+REL_ONLY = '<html><head><link rel="next" href="/blog/2/"></head><body></body></html>'
+REL_LINKED = ('<html><head><link rel="next" href="/blog/2/"></head>'
+              '<body><a href="/blog/2/">next</a></body></html>')
+check('rel next with no anchor caught',
+      has(pc.pagination_anchor_issues(soup_of(REL_ONLY), 'https://example.com/blog/'),
+          'not linked in an anchor tag'))
+check('rel next with an anchor quiet',
+      pc.pagination_anchor_issues(soup_of(REL_LINKED), 'https://example.com/blog/') == [])
+check('no rel next quiet',
+      pc.pagination_anchor_issues(soup_of('<html></html>'), 'https://example.com/') == [])
+
+# --- url shape ---------------------------------------------------------------
+check('repeated segment caught',
+      has(pc.url_shape_issues('https://example.com/blog/blog/post'), 'repetitive path'))
+check('date archive is not repetition',
+      not has(pc.url_shape_issues('https://example.com/2026/07/07/'), 'repetitive path'))
+check('search path caught',
+      has(pc.url_shape_issues('https://example.com/search/widgets'), 'internal search'))
+check('search param caught',
+      has(pc.url_shape_issues('https://example.com/?s=widgets'), 'internal search'))
+check('ordinary url quiet', pc.url_shape_issues('https://example.com/about/team') == [])
+
+# --- canonical fragment ------------------------------------------------------
+check('canonical fragment caught',
+      has(pc.canonical_issues(result(canonical='https://example.com/page#reviews'), {},
+                              soup_of('')), 'fragment'))
+check('clean canonical quiet',
+      not has(pc.canonical_issues(result(canonical='https://example.com/page'), {},
+                                  soup_of('')), 'fragment'))
+
+# --- document structure ------------------------------------------------------
+NO_HEAD = '<!doctype html><html><body><p>hi</p></body></html>'
+check('missing head caught', has(pc.markup_issues(NO_HEAD, soup_of(NO_HEAD)), 'No <head>'))
+NO_BODY = '<!doctype html><html><head><title>t</title></head></html>'
+check('missing body caught', has(pc.markup_issues(NO_BODY, soup_of(NO_BODY)), 'No <body>'))
+BIG = '<!doctype html><html><head></head><body>' + ('x' * 2_100_000) + '</body></html>'
+check('oversize document caught', has(pc.markup_issues(BIG, soup_of('')), 'over 2MB'))
+
+# --- crawl-level checks ------------------------------------------------------
+def row(url, **kw):
+    r = result(url=url)
+    r.update(kw)
+    return r
+
+
+rows = [row('https://example.com/a', canonical='https://example.com/b'),
+        row('https://example.com/b', indexable=False)]
+check('canonical to a noindex target',
+      has(pc.crawl_issues(rows).get('https://example.com/a', []), 'non-indexable URL'))
+rows = [row('https://example.com/a', canonical='https://example.com/b'),
+        row('https://example.com/b', status_code=404)]
+check('canonical to a 404 target',
+      has(pc.crawl_issues(rows).get('https://example.com/a', []), 'non-200'))
+rows = [row('https://example.com/a', canonical='https://example.com/b'),
+        row('https://example.com/b', redirect_url='https://example.com/c')]
+check('canonical to a redirect',
+      has(pc.crawl_issues(rows).get('https://example.com/a', []), 'redirects'))
+rows = [row('https://example.com/a', canonical='https://example.com/b'),
+        row('https://example.com/b')]
+check('healthy canonical quiet',
+      not any('Canonical points' in i
+              for i in pc.crawl_issues(rows).get('https://example.com/a', [])))
+
+# A redirecting row still carries the destination response, so it stays indexable.
+check('redirect row counts as indexable',
+      pc._is_indexable_row({'status_code': 200, 'indexable': True,
+                            'redirect_url': 'https://example.com/x'}))
+
+rows = [row('https://example.com/en/', internal_link_urls=['x'],
+            hreflang=[{'lang': 'fr', 'href': 'https://example.com/fr/'}]),
+        row('https://example.com/fr/', internal_link_urls=['x'], hreflang=[])]
+check('missing hreflang return link',
+      has(pc.crawl_issues(rows).get('https://example.com/en/', []), 'do not link back'))
+rows = [row('https://example.com/en/', internal_link_urls=['x'],
+            hreflang=[{'lang': 'fr', 'href': 'https://example.com/fr/'}]),
+        row('https://example.com/fr/', internal_link_urls=['x'],
+            hreflang=[{'lang': 'en', 'href': 'https://example.com/en/'}])]
+check('paired hreflang quiet',
+      not has(pc.crawl_issues(rows).get('https://example.com/en/', []), 'link back'))
+rows = [row('https://example.com/dup', canonical_kind='canonicalised',
+            internal_link_urls=['x'],
+            hreflang=[{'lang': 'fr', 'href': 'https://example.com/fr/'}]),
+        row('https://example.com/fr/', internal_link_urls=['x'], hreflang=[])]
+check('canonicalised page is not judged on hreflang',
+      not has(pc.crawl_issues(rows).get('https://example.com/dup', []), 'link back'))
+
+check('no internal outlinks caught',
+      has(pc.crawl_issues([row('https://example.com/a')]).get('https://example.com/a', []),
+          'No internal outlinks'))
+check('errored row is not called a dead end',
+      not has(pc.crawl_issues([row('https://example.com/a', error='timeout')])
+              .get('https://example.com/a', []), 'No internal outlinks'))
+check('foreign host row skipped',
+      pc.crawl_issues([row('https://example.com/a', internal_link_urls=['x']),
+                       row('https://example.com/b', internal_link_urls=['x']),
+                       row('https://other.com/x')],
+                      domain='example.com').get('https://other.com/x') is None)
+
+rows = [row('https://example.com/post', internal_link_urls=['x']),
+        row('https://example.com/tag', internal_link_urls=['x'], indexable=False)]
+inl = {'https://example.com/post': [{'source': 'https://example.com/tag'}]}
+check('non-indexable inlinks only',
+      has(pc.crawl_issues(rows, inl).get('https://example.com/post', []),
+          'only from non-indexable'))
+rows = [row('https://example.com/post', internal_link_urls=['x']),
+        row('https://example.com/hub', internal_link_urls=['x'])]
+inl = {'https://example.com/post': [{'source': 'https://example.com/hub'}]}
+check('indexable inlink quiet',
+      not has(pc.crawl_issues(rows, inl).get('https://example.com/post', []),
+              'only from non-indexable'))
+
+check('crawl_issues never raises on junk', pc.crawl_issues([], None) == {})
+check('crawl_issues ignores malformed rows', pc.crawl_issues([{}, None, 3]) == {})
+
+
 # --- the whole module together ----------------------------------------------
 everything = pc.extra_issues(
     BROKEN_HEAD, soup_of(BROKEN_HEAD), {},

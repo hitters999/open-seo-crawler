@@ -75,6 +75,21 @@ const ISSUE_META = {
   'Missing Twitter Card': { sev: 'info', why: 'Without twitter:card metadata, X falls back to Open Graph or plain text. Summary Large Image card gives the best preview.', sources: [['Ahrefs — Open Graph Tags', 'https://ahrefs.com/blog/open-graph-meta-tags/']] },
   // --- page_checks.py findings. Keyed by the slug normalize() returns,
   // which is what renderIssueInfo() looks up, not the card label.
+  'local staging links': { sev: 'error', why: 'The page links to localhost, a private IP, or a staging subdomain of this same site. Visitors get a dead link, and a staging link that search engines follow can expose an unfinished copy of the site. Almost always a developer link that survived a deploy.', sources: [['Google - Crawling and indexing', 'https://developers.google.com/search/docs/crawling-indexing']] },
+  'insecure forms': { sev: 'error', why: 'The form posts over plain HTTP, so everything typed into it travels in the clear. Chrome shows a "Not secure" warning on the field and blocks autofill, which costs conversions directly. Point the action at the HTTPS URL.', sources: [['Chrome - Mixed forms warning', 'https://developer.chrome.com/blog/mixed-forms/']] },
+  'image dimensions': { sev: 'info', why: 'Images with no width and height attributes reserve no space, so the page reflows as they load. That is the main cause of Cumulative Layout Shift, and the fix is two attributes on the tag. Low priority on its own, worth a batch fix when CLS is already poor.', sources: [['web.dev - Optimize CLS', 'https://web.dev/articles/optimize-cls']] },
+  'pagination not linked': { sev: 'warn', why: 'rel=next or rel=prev names the next page, but nothing on the page links to it with an anchor tag. Google retired support for rel=next and prev as an indexing signal, so a pagination series that exists only in those tags cannot be crawled at all and everything past page one stays undiscovered. Add real links.', sources: [['Google - Pagination best practices', 'https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading']] },
+  'hreflang no return': { sev: 'warn', why: 'Hreflang only counts when both pages name each other. A one-way annotation is ignored, so the language cluster does nothing and each market page competes on its own. Add the matching entry, pointing back at this URL, to every alternate.', sources: [['Google - Localized versions', 'https://developers.google.com/search/docs/specialty/international/localized-versions']] },
+  'Lorem ipsum placeholder text in the page copy': { sev: 'error', why: 'Template filler reached production. Google treats it as low-quality or unfinished content, and any visitor who reads it sees the same. Replace or remove the section.', sources: [['Google - Creating helpful content', 'https://developers.google.com/search/docs/fundamentals/creating-helpful-content']] },
+  'Canonical contains a fragment': { sev: 'warn', why: 'Google drops everything after the # when reading a canonical, so the tag resolves to a different URL than intended. Write the canonical without the fragment.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical points to a non-200 URL': { sev: 'error', why: 'The canonical names a URL that returns an error, so this page asks to be dropped in favour of a page that cannot be indexed. Both URLs end up out of the index. Point the canonical at a live 200 page.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical points to a URL that redirects': { sev: 'warn', why: 'The canonical target redirects somewhere else, so Google has to follow a hop to reach the real page and may ignore the tag instead. Point the canonical at the final destination.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'Canonical points to a non-indexable URL': { sev: 'error', why: 'The canonical names a page that is set to noindex, so this URL hands its indexing over to a page that refuses it. The usual result is that neither URL ranks.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
+  'No <head> element': { sev: 'error', why: 'The document has no head, so every tag that belongs there lands in the body where Google ignores it. Title, canonical and robots directives all stop working at once.', sources: [['MDN - The document metadata element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head']] },
+  'No <body> element': { sev: 'warn', why: 'The document has no body element. Browsers recover, but parsers and extraction tools disagree about where the content starts, and it usually points at a broken template.', sources: [['MDN - The document body element', 'https://developer.mozilla.org/en-US/docs/Web/HTML/Element/body']] },
+  'HTML document over 2MB': { sev: 'warn', why: 'Google stops reading an HTML document at around 2MB, so anything past that point is invisible however good it is. Oversized documents are usually an inlined asset or an unpaginated listing.', sources: [['Google - Indexing limits', 'https://developers.google.com/search/docs/crawling-indexing/googlebot']] },
+  'No internal outlinks': { sev: 'warn', why: 'The page links nowhere on the site, so crawling and link equity both stop here. On a page that earns traffic or links this wastes everything it has. Usually a template with a JavaScript-only navigation, or a landing page built outside the main theme.', sources: [['Google - Internal links', 'https://developers.google.com/search/docs/crawling-indexing/links-crawlable']] },
+  'Inbound internal links come only from non-indexable pages': { sev: 'warn', why: 'Every internal link to this page comes from a page set to noindex, such as a tag archive or a date archive. Those pages pass much less along over time, so the page is effectively unsupported however many links point at it. Add at least one link from a page that is indexed.', sources: [['Google - Internal links', 'https://developers.google.com/search/docs/crawling-indexing/links-crawlable']] },
   'Title outside head': { sev: 'error', why: 'A browser closes <head> at the first tag that does not belong there, such as an <img> or a <div>, and moves everything after it into <body>. The markup still reads as though the tag sat in the head, so this is invisible in the source, but Google takes the title, canonical or robots tag as body content and ignores it. Move the offending element below the closing head tag.', sources: [['Google - Title links', 'https://developers.google.com/search/docs/appearance/title-link']] },
   'Canonical outside head': { sev: 'error', why: 'Google only reads rel=canonical inside <head>. An element that does not belong in the head closes it early, dropping this tag into the body where it counts for nothing, so the page canonicalises to itself by default. Move the element that closes the head, not the canonical.', sources: [['Google - Canonicalization', 'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls']] },
   'Meta robots outside head': { sev: 'error', why: 'A robots meta tag outside <head> is ignored, so a page meant to be hidden stays indexable, or a directive you rely on silently stops applying. Move whatever closes the head early.', sources: [['Google - Robots meta tag', 'https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag']] },
@@ -151,10 +166,10 @@ const ISSUE_META = {
 // Error tier: a directive a browser moves out of head is ignored by Google,
 // and a malformed canonical hands the page to a URL that does not exist.
 // Both silently undo whatever the tag meant to say.
-const _PAGE_CHECK_ERR_RE = /^(title|canonical|meta robots) outside head|^unavailable_after|^canonical is malformed|^multiple conflicting canonicals|^canonical conflict|^soft 404|^noindex in the x-robots-tag|^conflicting robots directives|^robots "none"/;
+const _PAGE_CHECK_ERR_RE = /^(title|canonical|meta robots) outside head|^unavailable_after|^canonical is malformed|^multiple conflicting canonicals|^canonical conflict|^soft 404|^noindex in the x-robots-tag|^conflicting robots directives|^robots "none"|^lorem ipsum placeholder|^\d+ link\(s\) to a local or staging host|^\d+ form\(s\) submit over http|^no <head> element|^canonical points to a non-200|^canonical points to a non-indexable/;
 // Warning tier: real faults, but they cost visibility rather than removing
 // the page from the index.
-const _PAGE_CHECK_WARN_RE = /^multiple (title tags|canonical tags|meta descriptions|viewport tags|head elements|body elements)|^canonical (points to http|is a relative url|points to another host|only in the http header)|^noindex plus a canonical|^meta description outside head|^no compression|^paginated page|hreflang|^no lang attribute|^invalid lang attribute|^html lang|^h1 too long|may truncate in results|point to http|on-page anchor\(s\) point to nothing|^no doctype|^no charset declared|^charset is |^nosnippet/;
+const _PAGE_CHECK_WARN_RE = /^multiple (title tags|canonical tags|meta descriptions|viewport tags|head elements|body elements)|^canonical (points to http|is a relative url|points to another host|only in the http header)|^noindex plus a canonical|^meta description outside head|^no compression|^paginated page|hreflang|^no lang attribute|^invalid lang attribute|^html lang|^h1 too long|may truncate in results|point to http|on-page anchor\(s\) point to nothing|^no doctype|^no charset declared|^charset is |^nosnippet|^canonical contains a fragment|^canonical points to a url that redirects|^no <body> element|^html document over 2mb|^no internal outlinks|^inbound internal links come only|pagination url\(s\) declared by rel/;
 
 function sevOf(issue) {
   const l = (issue || '').toLowerCase();
@@ -1213,6 +1228,21 @@ window.selectCategory = function(cat) {
     // page_checks.py findings
     'Title outside head': 'Title Outside <head> (moved into the body, so Google ignores it)',
     'Canonical outside head': 'Canonical Outside <head> (ignored, page self-canonicalises)',
+    'local staging links': 'Links to a Local or Staging Host',
+    'insecure forms': 'Forms That Submit Over HTTP',
+    'image dimensions': 'Images With No Width or Height (layout shift)',
+    'pagination not linked': 'Pagination URLs Not Linked in an Anchor Tag',
+    'hreflang no return': 'Hreflang Alternates That Do Not Link Back',
+    'Lorem ipsum placeholder text in the page copy': 'Pages With Lorem Ipsum Placeholder Text',
+    'Canonical contains a fragment': 'Canonical Containing a Fragment',
+    'Canonical points to a non-200 URL': 'Canonical Pointing at a Non-200 URL',
+    'Canonical points to a URL that redirects': 'Canonical Pointing at a Redirect',
+    'Canonical points to a non-indexable URL': 'Canonical Pointing at a Non-Indexable URL',
+    'No <head> element': 'Pages With No <head> Element',
+    'No <body> element': 'Pages With No <body> Element',
+    'HTML document over 2MB': 'HTML Documents Over 2MB',
+    'No internal outlinks': 'Pages With No Internal Outlinks (dead ends)',
+    'Inbound internal links come only from non-indexable pages': 'Pages Linked Only From Non-Indexable Pages',
     'Meta robots outside head': 'Meta Robots Outside <head> (directive ignored)',
     'Meta description outside head': 'Meta Description Outside <head> (ignored)',
     'Hreflang outside head': 'Hreflang Outside <head> (cluster unread)',
@@ -2678,6 +2708,16 @@ function _scRenderSummaryPanel() {
     if (/^\d+ internal link\(s\) point to HTTP/i.test(issue))     return ['Internal links pointing to HTTP','internal http links'];
     if (/^\d+ internal link\(s\) are nofollow/i.test(issue))      return ['Internal nofollow links','internal nofollow'];
     if (/^\d+ on-page anchor\(s\) point to nothing/i.test(issue)) return ['On-page anchors pointing to nothing','dead anchors'];
+    if (/^\d+ link\(s\) to a local or staging host/i.test(issue))
+      return ['Links to a local or staging host','local staging links'];
+    if (/^\d+ form\(s\) submit over HTTP/i.test(issue))
+      return ['Forms submitting over HTTP','insecure forms'];
+    if (/^\d+ image\(s\) with no width or height/i.test(issue))
+      return ['Images with no width or height','image dimensions'];
+    if (/^\d+ pagination URL\(s\) declared by rel/i.test(issue))
+      return ['Pagination URLs not linked in an anchor tag','pagination not linked'];
+    if (/^\d+ hreflang alternate\(s\) do not link back/i.test(issue))
+      return ['Hreflang alternates that do not link back','hreflang no return'];
     if (/^Soft 404/i.test(stripped))                              return ['Soft 404 (200 status on a missing page)','soft 404'];
     if (/^HTML lang .* does not match/i.test(stripped))            return ['HTML lang does not match its hreflang entry','lang vs hreflang'];
     if (/^Charset is /i.test(stripped))                           return ['Charset is not UTF-8','charset'];
@@ -2830,6 +2870,16 @@ function _scRenderSeverityPanel(cat) {
     if (/^\d+ internal link\(s\) point to HTTP/i.test(issue))     return ['Internal links pointing to HTTP',      'internal http links'];
     if (/^\d+ internal link\(s\) are nofollow/i.test(issue))      return ['Internal nofollow links',              'internal nofollow'];
     if (/^\d+ on-page anchor\(s\) point to nothing/i.test(issue)) return ['On-page anchors pointing to nothing',   'dead anchors'];
+    if (/^\d+ link\(s\) to a local or staging host/i.test(issue))
+      return ['Links to a local or staging host','local staging links'];
+    if (/^\d+ form\(s\) submit over HTTP/i.test(issue))
+      return ['Forms submitting over HTTP','insecure forms'];
+    if (/^\d+ image\(s\) with no width or height/i.test(issue))
+      return ['Images with no width or height','image dimensions'];
+    if (/^\d+ pagination URL\(s\) declared by rel/i.test(issue))
+      return ['Pagination URLs not linked in an anchor tag','pagination not linked'];
+    if (/^\d+ hreflang alternate\(s\) do not link back/i.test(issue))
+      return ['Hreflang alternates that do not link back','hreflang no return'];
     if (/^Soft 404/i.test(stripped))                              return ['Soft 404 (200 status on a missing page)', 'soft 404'];
     if (/^HTML lang .* does not match/i.test(stripped))            return ['HTML lang does not match its hreflang entry', 'lang vs hreflang'];
     if (/^Charset is /i.test(stripped))                           return ['Charset is not UTF-8',                   'charset'];
