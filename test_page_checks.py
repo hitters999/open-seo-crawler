@@ -422,6 +422,14 @@ check('canonicalised page is not judged on hreflang',
 check('no internal outlinks caught',
       has(pc.crawl_issues([row('https://example.com/a')]).get('https://example.com/a', []),
           'No internal outlinks'))
+check('a PDF is not called a dead end',
+      not has(pc.crawl_issues([row('https://example.com/a.pdf',
+                                   content_type='application/pdf')])
+              .get('https://example.com/a.pdf', []), 'No internal outlinks'))
+check('an html row still is',
+      has(pc.crawl_issues([row('https://example.com/a',
+                               content_type='text/html; charset=utf-8')])
+          .get('https://example.com/a', []), 'No internal outlinks'))
 check('errored row is not called a dead end',
       not has(pc.crawl_issues([row('https://example.com/a', error='timeout')])
               .get('https://example.com/a', []), 'No internal outlinks'))

@@ -824,11 +824,17 @@ def crawl_issues(results, inlinks=None, domain=None):
 
         # A page with no internal outlinks is where crawl paths and link
         # equity stop dead.
-        # A row with an error, or a URL the crawler could not parse as http,
-        # has no link list because it was never really read.
+        # A row with an error, a URL the crawler could not parse as http, or a
+        # response that is not a web page has no link list to judge. A PDF, a
+        # video and an RSS feed all have no internal outlinks by definition,
+        # and calling them dead ends is noise: they were 8 of the first 20 hits
+        # across the saved crawls.
+        ctype = (r.get('content_type') or '').lower()
+        is_page = (not ctype) or ('html' in ctype) or ('xhtml' in ctype)
         if (not r.get('internal_link_urls')
                 and not r.get('is_pagination')
                 and not r.get('error')
+                and is_page
                 and url.lower().startswith(('http://', 'https://'))):
             add(url, 'No internal outlinks (dead end for crawling and link equity)')
 
