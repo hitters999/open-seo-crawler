@@ -47,7 +47,7 @@
   --accent-hover: #2563eb;
 }
 .theme-toggle {
-  margin-left: auto;
+  margin-left: 8px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -79,9 +79,39 @@
   transition: color .12s, border-color .12s;
 }
 .topbar-btn:hover { color: var(--accent); border-color: var(--accent); }
-/* Push the first topbar-btn (Sitemap.xml) to the right edge so the
-   theme toggle and export buttons cluster together on the right. */
-.topbar-btn:first-of-type { margin-left: auto; }
+/* Right-hand cluster: byline + build badge. margin-left:auto pushes it,
+   and the export / theme buttons after it, to the right edge. */
+.topbar-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.byline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 3px 0;
+  transition: color .12s;
+}
+.byline svg { width: 12px; height: 12px; opacity: .8; }
+.byline:hover { color: var(--accent); }
+.byline:hover svg { opacity: 1; }
+.build-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  cursor: pointer;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: color .12s, border-color .12s;
+}
+.build-badge:hover { color: var(--text); border-color: var(--accent); }
 
 /* Inline-style buttons can't be re-themed via tokens without !important.
    These hardcoded #0f172a / #fff / #f1f5f9 patterns pre-date the dark
@@ -174,6 +204,8 @@ body {
   background: var(--surface);
 }
 .brand {
+  white-space: nowrap;
+  flex-shrink: 0;
   font-weight: 700;
   font-size: 15px;
   letter-spacing: -0.01em;
@@ -268,8 +300,10 @@ body {
    text and wrap naturally — flex made each child its own column and
    broke "Ignore noindex" / "Sitemap analysis" labels into stacked
    blocks that wrapped weirdly. */
-.sidebar .check { display: block; padding: 5px 0; line-height: 1.45; cursor: pointer; font-size: 12.5px; color: var(--text); }
-.sidebar .check input[type="checkbox"] { vertical-align: middle; margin-right: 7px; transform: translateY(-1px); }
+/* Checkbox rows: box pinned left, label and helper text wrap as one
+   indented block so every row has the same rhythm. */
+.sidebar .check { display: block; position: relative; padding: 4px 0 4px 22px; margin-bottom: 6px; line-height: 1.45; cursor: pointer; font-size: 12.5px; color: var(--text); }
+.sidebar .check input[type="checkbox"] { position: absolute; left: 0; top: 6px; margin: 0; width: 14px; height: 14px; accent-color: var(--accent); }
 .sidebar .check small { color: var(--text-muted); font-size: 11.5px; font-weight: 400; }
 .filters { margin: 10px 0; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; }
 .filters summary { font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 8px 0; cursor: pointer; }
@@ -848,3 +882,74 @@ tbody:has(tr[data-url]) { user-select: none; }
 .cb-copy-btn { font-size:11px; padding:5px 12px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; font-weight:600; }
 .cb-pre { background:#0f172a; color:#e2e8f0; font-size:12px; font-family:monospace; padding:14px; border-radius:8px; overflow-x:auto; margin:0; }
 .cb-note { font-size:11px; color:var(--text-muted); margin-top:6px; }
+
+/* ── Form select: match the URL input instead of the native control ── */
+.sidebar select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 30px 7px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background-color: var(--surface2);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  outline: none;
+  margin-bottom: 8px;
+  transition: border-color .12s, box-shadow .12s;
+}
+.sidebar select:hover { border-color: #64748b; }
+.sidebar select:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+[data-theme="light"] .sidebar select { background-color: #ffffff; }
+.sidebar input[type=range] { width: 100%; accent-color: var(--accent); }
+
+/* ── Narrow screens ─────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .sub { display: none; }
+}
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; padding: 10px 16px; gap: 10px; }
+  .sc-views { margin-left: 0; }
+  .wrap, .wrap.nosb, .wrap:has(#issues-sidebar[style*="display:none"]) {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .sidebar, .issues-sidebar { border-right: 0; border-bottom: 1px solid var(--border); overflow-y: visible; }
+}
+@media (max-width: 520px) {
+  /* Second row: byline + build badge on the left, theme toggle right. */
+  .topbar-meta { order: 10; flex: 1; margin-left: 0; }
+  .theme-toggle { order: 11; }
+}
+
+/* Near-dup threshold field and preset chips carry hardcoded light inline
+   colours; re-theme them for dark mode. */
+[data-theme="dark"] #crawler-neardup-threshold,
+[data-theme="dark"] #crawler-user-agent-custom {
+  background: var(--surface2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="dark"] #crawler-neardup-cfg button {
+  background: var(--surface2) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="dark"] #crawler-neardup-cfg button:hover { color: var(--text) !important; border-color: var(--accent) !important; }
+#crawler-user-agent-custom {
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  margin-bottom: 8px;
+}
+#crawler-user-agent-custom:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
