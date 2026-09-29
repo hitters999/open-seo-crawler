@@ -8,6 +8,8 @@
 
 Built for SEO professionals, web developers, and site owners who want a real technical SEO audit that stays on their machine. Use it as a free SEO crawler for a single site or a recurring website crawler across your whole portfolio.
 
+Built by [Puneet Singh](https://au.linkedin.com/in/puneet-singh0), a working SEO. Questions, ideas or bugs you would rather talk through? Connect on LinkedIn.
+
 → One-line install on Linux, macOS, or Windows. Auto-starts on boot, auto-updates daily. Browser opens at `http://localhost:5002/` when done.
 
 ## How it compares
@@ -356,6 +358,10 @@ The authors accept no liability for misuse. See the LICENSE for the full disclai
 ## Trademarks
 
 Screaming Frog, Sitebulb, Ahrefs, Shopify, WordPress, Yoast SEO, Rank Math, Webflow, Wix, Squarespace, Kajabi, Ghost, Drupal, HubSpot, and Joomla are trademarks of their respective owners. This project is an independent open-source tool and is not affiliated with, endorsed by, or sponsored by any of them. References to these names are descriptive comparisons / compatibility lists only.
+
+## About
+
+Open SEO Crawler is built and maintained by [Puneet Singh](https://au.linkedin.com/in/puneet-singh0), an SEO who uses it on real sites every week. Bug reports go in [GitHub Issues](https://github.com/puneetindersingh/open-seo-crawler/issues). For anything else, connect on [LinkedIn](https://au.linkedin.com/in/puneet-singh0).
 
 ## Licence
 
