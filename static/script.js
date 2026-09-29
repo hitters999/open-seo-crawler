@@ -1196,6 +1196,11 @@ function matchesCategory(page, cat) {
   if (cat === 'internal nofollow')   return /\d+ internal link\(s\) are nofollow/.test(joined);
   if (cat === 'dead anchors')        return joined.includes('on-page anchor(s) point to nothing');
   if (cat === 'lang vs hreflang')    return joined.includes('does not match its own hreflang entry');
+  if (cat === 'local staging links')  return /\d+ link\(s\) to a local or staging host/.test(joined);
+  if (cat === 'insecure forms')       return /\d+ form\(s\) submit over http/.test(joined);
+  if (cat === 'image dimensions')     return /\d+ image\(s\) with no width or height/.test(joined);
+  if (cat === 'pagination not linked') return /pagination url\(s\) declared by rel/.test(joined);
+  if (cat === 'hreflang no return')   return /hreflang alternate\(s\) do not link back/.test(joined);
   return joined.includes(cat.toLowerCase());
 }
 
