@@ -1,8 +1,8 @@
 name: Build Android APK
 
 on:
+  # Build a fresh APK after every push/edit on any branch.
   push:
-    branches: [master]
   workflow_dispatch:
     inputs:
       app_url:
