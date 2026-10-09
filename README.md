@@ -139,6 +139,12 @@ python3 app.py
 
 Open [http://localhost:5002/](http://localhost:5002/) in your browser.
 
+## Automatic Android APK build
+
+This repository includes a lightweight Android WebView wrapper and a GitHub Actions workflow at `.github/workflows/build-apk.yml`. Every push to `master` builds a debug APK and uploads it as the `open-seo-crawler-apk` workflow artifact. You can also start the workflow manually from the **Actions** tab and provide the URL of a hosted crawler instance.
+
+For phone builds, set a repository variable named `APP_URL` to the public URL where this Flask app is running. The APK wraps the web UI; it does not bundle the Python server itself. The default `http://10.0.2.2:5002/` address is only useful for an Android emulator connecting to a local development server.
+
 ## One-line install — auto-start + auto-update (Linux / macOS / Windows)
 
 Each installer registers the crawler as a background service that starts on boot/login, plus a daily auto-updater that pulls the latest from this repo (with rollback on failure). Installs to `~/open-seo-crawler` (or `%USERPROFILE%\open-seo-crawler` on Windows). Browser auto-opens to `http://localhost:5002/` when done.
