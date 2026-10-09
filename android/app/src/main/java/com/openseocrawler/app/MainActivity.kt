@@ -61,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         val input = EditText(this).apply {
             hint = "http://192.168.1.20:5002/"
             textSize = 16f
-            singleLine = true
+            setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
         }
         val connect = Button(this).apply {
