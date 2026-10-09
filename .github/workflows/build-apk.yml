@@ -34,10 +34,13 @@ jobs:
 
       - name: Configure Android SDK
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          sdkmanager --version
-          yes | sdkmanager --licenses >/dev/null || true
-          yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(command -v sdkmanager || find "$SDK_ROOT" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "Using Android SDK: $SDK_ROOT"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          yes | "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
