@@ -17,7 +17,8 @@ permissions:
 env:
   JAVA_VERSION: "17"
   # Set repository variable APP_URL for push builds, or provide app_url manually.
-  DEFAULT_APP_URL: "http://10.0.2.2:5002/"
+  # If empty, the APK shows a setup screen instead of opening an unreachable URL.
+  DEFAULT_APP_URL: ""
 
 jobs:
   build:

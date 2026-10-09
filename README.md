@@ -143,7 +143,7 @@ Open [http://localhost:5002/](http://localhost:5002/) in your browser.
 
 This repository includes a lightweight Android WebView wrapper and a GitHub Actions workflow at `.github/workflows/build-apk.yml`. Every push to `master` builds a debug APK and uploads it as the `open-seo-crawler-apk` workflow artifact. You can also start the workflow manually from the **Actions** tab and provide the URL of a hosted crawler instance.
 
-For phone builds, set a repository variable named `APP_URL` to the public URL where this Flask app is running. The APK wraps the web UI; it does not bundle the Python server itself. The default `http://10.0.2.2:5002/` address is only useful for an Android emulator connecting to a local development server.
+For phone builds, set a repository variable named `APP_URL` to the public URL where this Flask app is running. The APK wraps the web UI; it does not bundle the Python server itself. If no URL is supplied, the APK shows a setup screen. Do not use `http://10.0.2.2:5002/` on a physical phone: that address works only from an Android emulator. On the same Wi-Fi, enter the computer's LAN address such as `http://192.168.1.20:5002/`; for access from anywhere, use an HTTPS public deployment URL.
 
 ## One-line install — auto-start + auto-update (Linux / macOS / Windows)
 

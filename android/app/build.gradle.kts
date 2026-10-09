@@ -5,8 +5,7 @@ plugins {
 
 val appUrl = (project.findProperty("appUrl") as String?)
     ?.trim()
-    ?.takeIf { it.isNotEmpty() }
-    ?: "http://10.0.2.2:5002/"
+    ?: ""
 
 android {
     namespace = "com.openseocrawler.app"
